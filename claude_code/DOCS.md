@@ -15,8 +15,9 @@ work on your configuration from your phone without a laptop.
   again without anyone opening the panel. If Claude Code exits it is started
   again; if Remote Control gives up after an outage (for example "Previous
   session is unavailable"), a watchdog restarts it.
-- Claude Code is installed with Anthropic's native installer into `/data` and
-  updates itself; the new version is used after the next add-on restart.
+- Claude Code is installed with Anthropic's native installer into `/data`.
+  Every add-on start updates it to the current release of `update_channel`;
+  in between it downloads updates itself, used from the next restart.
 - Git repositories you list are cloned into `/data/work`, each with its own
   deploy key. The session works there, and `ha-deploy` fast-forwards the live
   `/config` to what you pushed. Nothing edits `/config` directly.
@@ -55,7 +56,7 @@ work on your configuration from your phone without a laptop.
 | `effort` | `xhigh` | Effort level the session starts with (`--effort`, so it applies to every model) |
 | `ultracode` | `true` | Start sessions with ultracode (Claude plans a multi-agent workflow for each substantive task; uses much more of your plan's usage) |
 | `permission_mode` | `auto` | Starting permission mode: `auto` (a classifier approves routine actions and asks you about risky ones), `default` (asks before edits and commands), `acceptEdits`, `plan` |
-| `update_channel` | `stable` | Claude Code release channel |
+| `update_channel` | `latest` | Claude Code release channel. New models (for example a new Opus) only work on a release that knows them, and they arrive on `latest` first; `stable` trails by about a week. Every add-on start updates to the channel's current release |
 | `repositories` | none | `git@github.com:owner/repo.git` entries to clone into `/data/work` |
 | `working_directory` | first repository | Where the session starts |
 | `memory_directory` | Claude's default | Where Claude keeps its auto memory, for example a folder inside a clone so it's versioned and shared with other machines |

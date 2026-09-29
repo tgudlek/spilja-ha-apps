@@ -13,6 +13,9 @@ until claude --version >/dev/null 2>&1; do
     sleep 5
 done
 
+# Let provisioning bring Claude Code up to date first (it gives up after 5 min).
+for _ in $(seq 1 36); do [ -f /tmp/claude-ready ] && break; printf '\rUpdating Claude Code... '; sleep 5; done
+
 # Start where the work is: wait for the clone rather than starting in /data/work
 # and moving later (a new folder means a new trust prompt and conversation).
 target="$(target_dir)"

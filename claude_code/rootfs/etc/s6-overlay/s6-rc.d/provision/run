@@ -21,7 +21,16 @@ until claude_ok; do
     bashio::log.warning "Claude Code install failed; retrying in ${delay}s"
     sleep "$delay"; delay=$(( delay * 2 > 600 ? 600 : delay * 2 ))
 done
-bashio::log.info "Claude Code $(claude --version 2>/dev/null)"
+# Every start: move to the channel's current release, so a restart always
+# brings the newest Claude Code (and the models it knows). The session waits
+# for this (up to 3 min), so it doesn't start on the old version.
+channel="$(opt update_channel)"
+if timeout 300 claude install "$channel" >/tmp/claude-update.log 2>&1; then
+    bashio::log.info "Claude Code $(claude --version 2>/dev/null) ($channel)"
+else
+    bashio::log.warning "Couldn't update Claude Code to $channel: $(tail -n1 /tmp/claude-update.log); using $(claude --version 2>/dev/null)"
+fi
+touch /tmp/claude-ready
 
 # After a clone: what a Home Assistant config clone needs for pre-commit.
 post_clone() {

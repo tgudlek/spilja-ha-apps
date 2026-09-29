@@ -1,5 +1,5 @@
 name: Claude Code
-version: "0.1.0"
+version: "0.1.1"
 slug: claude_code
 description: >-
   An always-on Claude Code session on the Home Assistant box: in the sidebar,
@@ -51,7 +51,7 @@ options:
   effort: xhigh
   ultracode: true
   permission_mode: auto
-  update_channel: stable
+  update_channel: latest   # new models arrive on latest first
   repositories: []
   ssh_hosts: []
 schema:
