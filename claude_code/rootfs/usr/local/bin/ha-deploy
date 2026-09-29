@@ -1,0 +1,24 @@
+#!/bin/bash
+# Bring the live /config up to what's pushed: fetch, then fast-forward only.
+# Never stashes or resets: HA rewrites tracked .storage files all the time, and
+# a fast-forward leaves files the incoming commits don't touch alone.
+set -euo pipefail
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+url="$(git -C /config remote get-url origin)"
+case "$url" in
+    https://*) echo "/config's origin is $url; ha-deploy needs an SSH URL:" >&2
+               echo "  git -C /config remote set-url origin git@github.com:$(repo_slug "$url").git" >&2
+               exit 1 ;;
+esac
+git -C /config -c core.sshCommand="$(git_ssh "$url")" fetch -q origin
+before="$(git -C /config rev-parse --short HEAD)"
+git -C /config merge --ff-only -q '@{u}'
+after="$(git -C /config rev-parse --short HEAD)"
+if [ "$before" = "$after" ]; then
+    echo "/config already at $after"
+else
+    echo "/config: $before -> $after"
+    git -C /config log --oneline "$before..$after"
+fi

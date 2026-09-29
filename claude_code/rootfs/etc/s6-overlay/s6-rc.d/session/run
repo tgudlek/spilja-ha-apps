@@ -1,0 +1,24 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# The tmux session the sidebar panel attaches to: window "claude" runs the
+# always-on Claude Code session (claude-loop), window "shell" a shell.
+# While it lives: bring the claude window back if it was closed, and check
+# every 30 s that Remote Control hasn't failed for good (rc-watchdog).
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+if ! tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    tmux -f /etc/tmux.conf new-session -d -s "$TMUX_SESSION" -n claude -x 200 -y 50 claude-loop
+    tmux new-window -d -t "$TMUX_SESSION:" -n shell -c "$WORK" bash -l
+    log "tmux session '$TMUX_SESSION' started"
+fi
+
+while tmux has-session -t "$TMUX_SESSION" 2>/dev/null; do
+    sleep 30
+    if ! tmux list-windows -t "$TMUX_SESSION" -F '#{window_name}' | grep -qx claude; then
+        tmux new-window -d -b -t "$TMUX_SESSION:0" -n claude claude-loop
+        log "claude window was closed; started it again"
+    fi
+    rc-watchdog || true
+done
+log "tmux session ended; s6 restarts this service"

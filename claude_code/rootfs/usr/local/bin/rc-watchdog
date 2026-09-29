@@ -1,0 +1,66 @@
+#!/bin/bash
+# Remote Control recovers from short outages by itself. After some failures it
+# gives up and waits for someone to type /remote-control in the terminal,
+# which nobody does on an unattended box. Run every 30 s by the session
+# service: when the bottom of the claude window shows that Remote Control
+# failed, on two checks in a row, while the internet is reachable, restart
+# Claude. It continues the conversation and reconnects; after "Previous
+# session is unavailable" it starts a new conversation instead.
+#
+# Only the visible screen's last lines count: the footer's Remote Control
+# indicator ("/rc failed" vs "/rc", "/rc reconnecting", ...) and the notice
+# printed just above the prompt. Older text, and anything quoted in the
+# conversation higher up, is ignored.
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+STATE=/tmp/rc-watchdog
+mkdir -p "$STATE"
+
+FAILED='/rc failed|disabled after repeated failures|run /remote-control|Previous session is unavailable|Couldn.t reconnect to your Remote Control session'
+
+started="$(cat /tmp/claude-loop.started 2>/dev/null || echo 0)"
+now="$(date +%s)"
+[ $(( now - started )) -ge 90 ] || { echo 0 > "$STATE/bad"; exit 0; }   # let it start and connect
+
+screen="$(tmux capture-pane -p -J -t "$TMUX_SESSION:claude" 2>/dev/null)" || exit 0
+bottom="$(grep -v '^[[:space:]]*$' <<< "$screen" | tail -n 8)"
+footer="$(tail -n 3 <<< "$bottom")"
+
+bad=0
+if grep -q '/rc failed' <<< "$footer"; then
+    bad=1
+elif grep -q '/rc' <<< "$footer"; then
+    bad=0                                   # connected, connecting or reconnecting
+elif grep -Eq "$FAILED" <<< "$bottom"; then
+    bad=1                                   # a give-up notice and no indicator at all
+fi
+
+if [ "$bad" = 0 ]; then echo 0 > "$STATE/bad"; exit 0; fi
+n=$(( $(cat "$STATE/bad" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$STATE/bad"
+[ "$n" -ge 2 ] || exit 0
+
+# Offline: a restart can't help, and Claude keeps retrying on its own.
+curl -s -m 10 -o /dev/null https://api.anthropic.com/ || exit 0
+
+# At most three restarts an hour; a persistent failure stays visible instead.
+recent="$(find "$STATE" -name 'restart.*' -mmin -60 | wc -l)"
+if [ "$recent" -ge 3 ]; then
+    log "Remote Control still failing; not restarting (3 restarts in the last hour)"
+    exit 0
+fi
+touch "$STATE/restart.$now"
+echo 0 > "$STATE/bad"
+grep -q 'Previous session is unavailable' <<< "$bottom" && touch "$FRESH_FLAG"
+log "Remote Control failed ($(grep -Eo "$FAILED" <<< "$bottom" | tail -n1)); restarting Claude Code"
+# claude-loop is the pane's process; Claude Code is its child
+loop_pid="$(tmux display-message -p -t "$TMUX_SESSION:claude" '#{pane_pid}')"
+pids="$(pgrep -P "$loop_pid")"
+[ -n "$pids" ] || exit 0
+# shellcheck disable=SC2086
+kill -TERM $pids 2>/dev/null
+sleep 20
+# shellcheck disable=SC2086
+kill -KILL $pids 2>/dev/null   # only the processes stopped above, never the restarted Claude
+exit 0

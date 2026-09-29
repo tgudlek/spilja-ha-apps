@@ -1,0 +1,10 @@
+#!/bin/bash
+# What ttyd runs for each browser tab: attach to the add-on's tmux session
+# (closing the tab only detaches).
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+until tmux has-session -t "$TMUX_SESSION" 2>/dev/null; do
+    printf '\rStarting... '
+    sleep 1
+done
+exec tmux -u attach-session -t "$TMUX_SESSION"

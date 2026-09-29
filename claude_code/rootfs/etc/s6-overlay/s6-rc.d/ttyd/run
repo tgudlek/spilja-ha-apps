@@ -1,0 +1,7 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# The web terminal, on loopback only; nginx in front admits only the
+# Supervisor's ingress proxy.
+exec ttyd --writable --interface lo --port 7681 --ping-interval 20 \
+    -t disableLeaveAlert=true -t titleFixed=Claude -t fontSize=14 \
+    attach-claude

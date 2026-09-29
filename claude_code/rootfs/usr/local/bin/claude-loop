@@ -1,0 +1,53 @@
+#!/bin/bash
+# Runs in tmux window "claude": the always-on session. Continues the last
+# conversation (which reconnects its Remote Control session) and starts
+# Claude again whenever it exits, so /exit or a crash never leaves the phone
+# without a session.
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+trap ':' INT   # Ctrl-C reaches Claude, never ends this loop
+
+until claude --version >/dev/null 2>&1; do
+    printf '\rInstalling Claude Code (see the add-on log)... '
+    sleep 5
+done
+
+# Start where the work is: wait for the clone rather than starting in /data/work
+# and moving later (a new folder means a new trust prompt and conversation).
+target="$(target_dir)"
+until [ -d "$target" ]; do
+    printf '\rWaiting for %s (its deploy key? see the add-on log)... ' "$target"
+    sleep 10
+done
+
+quick_fails=0
+while :; do
+    cd "$target" || cd "$WORK" || exit 1
+    project="$HOME/.claude/projects/$(pwd -P | sed 's#[^A-Za-z0-9]#-#g')"
+    if [ -f "$FRESH_FLAG" ]; then
+        rm -f "$FRESH_FLAG"
+        args=(--remote-control "$(opt session_name)")
+    elif compgen -G "$project/*.jsonl" >/dev/null; then
+        args=(--continue)
+    else
+        args=(--remote-control "$(opt session_name)")
+    fi
+    clear
+    tmux clear-history -t "$TMUX_SESSION:claude" 2>/dev/null
+    date +%s > /tmp/claude-loop.started
+    t0="$(date +%s)"
+    # --effort outranks saved levels (Opus 5.5 ignores the settings file's effortLevel)
+    claude --effort "$(opt effort)" "${args[@]}"
+    code=$?
+    # --continue that exits at once (nothing to continue): start fresh next time
+    if [ "${args[0]}" = --continue ] && [ "$code" -ne 0 ] && [ $(( $(date +%s) - t0 )) -lt 30 ]; then
+        quick_fails=$(( quick_fails + 1 ))
+        [ "$quick_fails" -ge 2 ] && { touch "$FRESH_FLAG"; quick_fails=0; }
+    else
+        quick_fails=0
+    fi
+    echo
+    echo "Claude Code exited ($code). Starting it again in 5 s."
+    sleep 5
+done

@@ -1,0 +1,12 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# s6 restarts this service when it exits. Only if it keeps failing (5 times
+# in a minute) stop the container, so the Supervisor's watchdog restarts the
+# whole add-on; one crash must not take the Claude session down with it.
+code="$1"
+[ "$code" -ne 0 ] && [ "$code" -ne 256 ] || exit 0
+f="/run/claude-addon.$(basename "$PWD").fails"
+date +%s >> "$f"
+[ "$(awk -v now="$(date +%s)" 'now - $1 < 60' "$f" | wc -l)" -ge 5 ] || exit 0
+echo "$code" > /run/s6-linux-init-container-results/exitcode
+exec /run/s6/basedir/bin/halt

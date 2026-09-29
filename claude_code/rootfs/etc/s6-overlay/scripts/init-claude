@@ -1,0 +1,110 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Fast local setup on every start (no network): directories, SSH keys and
+# config, git identity, the panel's user list, and the Claude Code settings
+# the add-on options own.
+# Never fails: a oneshot failure stops the container (S6_BEHAVIOUR_IF_STAGE2_FAILS=2),
+# and then nobody could reach the panel to fix whatever broke it.
+set +o errexit +o nounset
+umask 077
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+mkdir -p "$HOME/.ssh" "$HOME/.claude" "$HOME/.local/bin" "$WORK"
+chmod 700 "$HOME" "$HOME/.ssh"
+
+# One deploy key per GitHub repository (GitHub allows a key on one repo only),
+# one key for the SSH hosts. Public keys go to the log every start.
+while read -r url; do
+    [ -n "$url" ] || continue
+    key="$(repo_key "$url")"
+    [ -f "$key" ] || ssh-keygen -q -t ed25519 -N '' -C "ha-claude:$(repo_name "$url")" -f "$key" \
+        || bashio::log.warning "Couldn't create a key for $url"
+    [ -f "$key.pub" ] && bashio::log.info "Deploy key for ${url} (add it on GitHub with write access): $(cat "$key.pub")"
+done < <(opt repositories)
+
+hosts="$(opt ssh_hosts)"
+{
+    echo "# Written by the add-on on every start; edit the ssh_hosts option instead."
+    echo "Host github.com"
+    echo "  StrictHostKeyChecking yes          # pinned in /etc/ssh/ssh_known_hosts"
+    if [ -n "$hosts" ]; then
+        [ -f "$HOME/.ssh/id_hosts" ] || ssh-keygen -q -t ed25519 -N '' -C "ha-claude:hosts" -f "$HOME/.ssh/id_hosts"
+        bashio::log.info "SSH key for the hosts in ssh_hosts (add to their authorized_keys): $(cat "$HOME/.ssh/id_hosts.pub")"
+        while read -r entry; do
+            [ -n "$entry" ] || continue
+            name="${entry%%=*}"; target="${entry#*=}"; hostport="${target#*@}"
+            echo
+            echo "Host $name"
+            echo "  HostName ${hostport%%:*}"
+            [ "$hostport" != "${hostport%%:*}" ] && echo "  Port ${hostport#*:}"
+            echo "  User ${target%@*}"
+            echo "  IdentityFile ~/.ssh/id_hosts"
+            echo "  IdentitiesOnly yes"
+        done <<< "$hosts"
+    fi
+    echo
+    echo "Host *"
+    echo "  StrictHostKeyChecking accept-new   # LAN hosts: trusted on first use, then pinned"
+    echo "  ServerAliveInterval 30"
+} > "$HOME/.ssh/config"
+
+# git
+git config --global init.defaultBranch main || bashio::log.warning "git config failed (is ~/.gitconfig valid?)"
+git config --global pull.ff only
+git config --global --replace-all safe.directory '*'
+[ -n "$(opt git_name)" ] && git config --global user.name "$(opt git_name)"
+[ -n "$(opt git_email)" ] && git config --global user.email "$(opt git_email)"
+
+# The panel: only these Home Assistant users (the Supervisor sets
+# X-Remote-User-Name from the logged-in user and strips client copies).
+users_map=/run/claude-panel-users.map
+: > "$users_map"
+while read -r u; do
+    [ -n "$u" ] && printf '"%s" 1;\n' "$u" >> "$users_map"
+done < <(opt panel_users)
+if [ -s "$users_map" ]; then
+    bashio::log.info "Panel users: $(opt panel_users | paste -sd, -)"
+else
+    bashio::log.warning "panel_users is empty: the sidebar panel refuses everyone. Add your Home Assistant username."
+fi
+
+# Claude Code user settings: the add-on options win for the keys they own;
+# everything else in the file (allow rules etc.) is kept. Policy that must not
+# be removed lives in /etc/claude-code/managed-settings.json instead.
+settings="$HOME/.claude/settings.json"
+if [ -s "$settings" ] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
+    mv "$settings" "$settings.invalid-$(date +%s)"
+    bashio::log.warning "settings.json was not valid JSON; moved aside and started from defaults"
+fi
+[ -s "$settings" ] || cp /usr/share/claude-addon/settings.json "$settings"
+dirs="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d -not -name '*.tmp' | jq -R . | jq -s .)"
+tmp="$(mktemp "$settings.XXXXXX")"
+if jq --arg model "$(opt model)" \
+      --arg effort "$(opt effort)" \
+      --arg mode "$(opt permission_mode)" \
+      --arg channel "$(opt update_channel)" \
+      --arg memory "$(opt memory_directory)" \
+      --argjson ultracode "$(jq '.ultracode == true' "$OPTIONS")" \
+      --argjson dirs "$dirs" '
+        .model = $model
+      | .effortLevel = (if $effort == "max" then "xhigh" else $effort end)
+      | .ultracode = $ultracode
+      | (if $ultracode then .enableWorkflows = true else . end)
+      | .autoUpdatesChannel = $channel
+      | .remoteControlAtStartup = true
+      | .inputNeededNotifEnabled = true
+      | .agentPushNotifEnabled = true
+      | .permissions.defaultMode = $mode
+      | .permissions.additionalDirectories =
+          ([(.permissions.additionalDirectories // [])[] | select(startswith("/data/work/") or . == "/config" | not)] + $dirs | unique)
+      | (if $memory != "" then .autoMemoryDirectory = $memory else del(.autoMemoryDirectory) end)
+    ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+else
+    rm -f "$tmp"
+    bashio::log.warning "Couldn't apply the add-on options to settings.json"
+fi
+
+bashio::log.info "Session: model $(opt model), effort $(opt effort), ultracode $(jq '.ultracode' "$OPTIONS"), permission mode $(opt permission_mode)"
+exit 0

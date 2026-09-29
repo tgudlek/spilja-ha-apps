@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//config/**)"
+    ],
+    "deny": [
+      "Edit(//config/**)",
+      "Read(//config/secrets.yaml)",
+      "Read(//config/.storage/auth)",
+      "Read(//config/.storage/auth_provider.*)",
+      "Read(//config/.storage/application_credentials)",
+      "Read(//config/.cloud/**)",
+      "Read(//data/home/.ssh/id_*)",
+      "Read(//data/home/.claude/.credentials.json)",
+      "Bash(hass *--secrets*)",
+      "Bash(hass * -s*)",
+      "Bash(hass *--info*)",
+      "Bash(hass * -i*)"
+    ],
+    "ask": [
+      "Bash(ha backups remove*)",
+      "Bash(ha backups restore*)",
+      "Bash(ha backups delete*)",
+      "Bash(ha apps uninstall*)",
+      "Bash(ha addons uninstall*)",
+      "Bash(ha store *)",
+      "Bash(ha mounts *)",
+      "Bash(ha host reboot*)",
+      "Bash(ha host shutdown*)",
+      "Bash(ha os update*)",
+      "Bash(ha core update*)",
+      "Bash(ha supervisor update*)"
+    ]
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "This machine is a home's production Home Assistant server, running this session inside a Home Assistant add-on. /config is the live configuration: it is never edited directly; changes are made in the git clones under /data/work, committed, pushed, and deployed with ha-deploy (fetch + fast-forward merge).",
+      "http://supervisor/ and ws://supervisor/core/websocket (authenticated with $SUPERVISOR_TOKEN) and the ha CLI control the real home: service calls move locks, gates, lights, heating and cameras, and Supervisor calls restart or reconfigure the system.",
+      "The hosts in ~/.ssh/config are production machines of the same home (for example the camera recorder)."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "State changes through the Home Assistant or Supervisor API or the ha CLI (service calls, restarts, reloads, registry or add-on changes) that the user did not ask for in this conversation.",
+      "Writing or deleting files under /config by any means other than ha-deploy.",
+      "Unlocking doors, opening gates, disarming alarms or turning off cameras unless the user asked for exactly that action."
+    ]
+  }
+}

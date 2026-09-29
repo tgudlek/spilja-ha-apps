@@ -1,0 +1,84 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# Network work, retried until it succeeds; the session waits meanwhile.
+#  1. Claude Code (native installer, into /data/home/.local; it updates itself)
+#  2. clones of the repositories into /data/work (each once its deploy key works)
+#  3. for Home Assistant config clones: secrets symlink, a venv with the Home
+#     Assistant version production runs (re-checked hourly), pre-commit hooks
+set +o errexit +o nounset   # bashio turns these on; this script handles failures itself
+# shellcheck source=/dev/null
+. /usr/local/lib/claude-addon/common.sh
+
+claude_ok() { claude --version >/dev/null 2>&1; }
+
+delay=30
+until claude_ok; do
+    bashio::log.info "Installing Claude Code ($(opt update_channel))..."
+    if curl -fsSL -o /tmp/claude-install.sh https://claude.ai/install.sh \
+        && bash /tmp/claude-install.sh "$(opt update_channel)" && claude_ok; then
+        break
+    fi
+    bashio::log.warning "Claude Code install failed; retrying in ${delay}s"
+    sleep "$delay"; delay=$(( delay * 2 > 600 ? 600 : delay * 2 ))
+done
+bashio::log.info "Claude Code $(claude --version 2>/dev/null)"
+
+# After a clone: what a Home Assistant config clone needs for pre-commit.
+post_clone() {
+    local dir="$1"
+    [ -f "$dir/configuration.yaml" ] || return 0
+    if [ -f /config/secrets.yaml ] && [ ! -e "$dir/secrets.yaml" ]; then
+        ln -s /config/secrets.yaml "$dir/secrets.yaml"
+    fi
+    if ha-venv-sync; then
+        if [ -f "$dir/.pre-commit-config.yaml" ] && [ ! -f "$dir/.git/hooks/pre-commit" ]; then
+            if (cd "$dir" && pre-commit install >/dev/null); then
+                bashio::log.info "pre-commit hooks installed in $dir"
+            else
+                bashio::log.warning "pre-commit install failed in $dir"
+            fi
+        fi
+    else
+        bashio::log.warning "ha-venv-sync failed; run it in the shell window to retry"
+    fi
+}
+
+clone_all() {   # returns 1 while any repository is still missing
+    local url dir missing=0
+    while read -r url; do
+        [ -n "$url" ] || continue
+        dir="$WORK/$(repo_name "$url")"
+        if [ -d "$dir/.git" ]; then
+            post_clone "$dir"
+            continue
+        fi
+        if [ -e "$dir" ]; then
+            bashio::log.warning "$dir exists but is not a git clone; move it away to clone $url"
+            missing=1; continue
+        fi
+        rm -rf "$dir.tmp"
+        if GIT_SSH_COMMAND="$(git_ssh "$url")" git clone -q "$url" "$dir.tmp" 2>/tmp/clone.err \
+            && mv "$dir.tmp" "$dir"; then
+            git -C "$dir" config core.sshCommand "$(git_ssh "$url")"
+            bashio::log.info "Cloned $url into $dir"
+            post_clone "$dir"
+        else
+            rm -rf "$dir.tmp"; missing=1
+            bashio::log.warning "Can't clone $url yet ($(grep -m1 -E 'denied|fatal|ERROR' /tmp/clone.err || tail -n1 /tmp/clone.err)). Add its deploy key on GitHub (see above); retrying."
+        fi
+    done < <(opt repositories)
+    return "$missing"
+}
+
+wait=60
+until clone_all; do
+    sleep "$wait"; wait=$(( wait * 2 > 600 ? 600 : wait * 2 ))
+done
+bashio::log.info "Provisioning done"
+
+# Core updates don't restart add-ons: keep the venv on production's version.
+while sleep 3600; do
+    if ls "$WORK"/*/configuration.yaml >/dev/null 2>&1; then
+        ha-venv-sync >/tmp/venv-sync.log 2>&1 || bashio::log.warning "ha-venv-sync failed: $(tail -n1 /tmp/venv-sync.log)"
+    fi
+done

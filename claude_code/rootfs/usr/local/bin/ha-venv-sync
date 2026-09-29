@@ -1,0 +1,37 @@
+#!/bin/bash
+# Make /data/venv run the Home Assistant version production runs, so
+# `hass --script check_config` in pre-commit matches it. Wheels come from
+# Home Assistant's own musllinux index, so nothing compiles.
+#   ha-venv-sync            the version Core runs now
+#   ha-venv-sync 2026.8.3   a given version
+set -euo pipefail
+
+exec 9>/data/.venv-sync.lock
+flock 9
+
+want="${1:-}"
+if [ -z "$want" ]; then
+    want="$(curl -fsS -H "Authorization: Bearer ${SUPERVISOR_TOKEN:?}" http://supervisor/core/info | jq -r .data.version)"
+fi
+
+# A new Python in the image leaves the old venv unusable: rebuild it.
+if [ -f /data/venv/pyvenv.cfg ]; then
+    venv_py="$(sed -n 's/^version = \([0-9]*\.[0-9]*\).*/\1/p' /data/venv/pyvenv.cfg)"
+    this_py="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+    if [ "$venv_py" != "$this_py" ]; then
+        echo "Python changed ($venv_py -> $this_py); rebuilding /data/venv"
+        python3 -m venv --clear /data/venv
+    fi
+fi
+[ -x /data/venv/bin/python ] || python3 -m venv /data/venv
+
+have="$(/data/venv/bin/python -c 'from homeassistant.const import __version__ as v; print(v)' 2>/dev/null || true)"
+if [ "$want" = "$have" ]; then
+    echo "venv already on Home Assistant $have"
+    exit 0
+fi
+echo "Installing Home Assistant $want into /data/venv (was: ${have:-none})..."
+/data/venv/bin/pip install --quiet --upgrade \
+    --extra-index-url https://wheels.home-assistant.io/musllinux-index/ \
+    "homeassistant==$want" pre-commit pyyaml
+echo "venv now on Home Assistant $want"

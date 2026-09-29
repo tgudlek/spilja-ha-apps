@@ -1,0 +1,52 @@
+configuration:
+  session_name:
+    name: Session name
+    description: Name of the session in the Claude app (Remote Control).
+  panel_users:
+    name: Panel users
+    description: >-
+      Home Assistant usernames allowed to open the sidebar panel. Empty means
+      nobody.
+  model:
+    name: Model
+    description: Default model, for example opus or sonnet.
+  effort:
+    name: Effort
+    description: Default effort level.
+  ultracode:
+    name: Ultracode
+    description: >-
+      Start sessions with ultracode: Claude plans a multi-agent workflow for
+      each substantive task. Uses much more of your plan's usage.
+  permission_mode:
+    name: Permission mode
+    description: >-
+      auto lets a classifier approve routine actions and asks you about risky
+      ones; default asks before every edit and command.
+  update_channel:
+    name: Update channel
+    description: Claude Code release channel.
+  repositories:
+    name: Repositories
+    description: >-
+      git@github.com:owner/repo.git entries to clone into /data/work. Each gets
+      its own deploy key, printed in the log.
+  working_directory:
+    name: Working directory
+    description: Where the session starts. Defaults to the first repository's clone.
+  memory_directory:
+    name: Memory directory
+    description: >-
+      Where Claude keeps its auto memory, for example a folder inside a clone
+      so it is versioned. Empty uses Claude's default.
+  ssh_hosts:
+    name: SSH hosts
+    description: >-
+      name=user@host or name=user@host:port entries the session can reach with
+      "ssh name". Their key is printed in the log.
+  git_name:
+    name: Git name
+    description: Name for commits made on the box.
+  git_email:
+    name: Git email
+    description: Email for commits made on the box.
