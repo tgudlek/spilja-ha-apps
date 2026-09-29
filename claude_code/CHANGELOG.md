@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+- Start Claude with `--model` from the options, so a continued conversation
+  switches to it too (a resumed conversation kept the model it began with).
+- rc-watchdog reads Claude Code's own session record (`bridgeSessionId`) to
+  tell whether Remote Control is connected, instead of screen text that the
+  conversation could quote.
+
 ## 0.1.1
 
 - Follow the `latest` Claude Code channel by default: `stable` (2.1.277) doesn't

@@ -40,8 +40,10 @@ while :; do
     tmux clear-history -t "$TMUX_SESSION:claude" 2>/dev/null
     date +%s > /tmp/claude-loop.started
     t0="$(date +%s)"
-    # --effort outranks saved levels (Opus 5.5 ignores the settings file's effortLevel)
-    claude --effort "$(opt effort)" "${args[@]}"
+    # The add-on's model and effort win on every start: --model also switches a
+    # continued conversation (it would otherwise keep the model it began with),
+    # --effort outranks saved levels (Opus 5.5 ignores the settings file's effortLevel).
+    claude --model "$(opt model)" --effort "$(opt effort)" "${args[@]}"
     code=$?
     # --continue that exits at once (nothing to continue): start fresh next time
     if [ "${args[0]}" = --continue ] && [ "$code" -ne 0 ] && [ $(( $(date +%s) - t0 )) -lt 30 ]; then
