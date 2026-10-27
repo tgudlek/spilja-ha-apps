@@ -31,7 +31,7 @@ if [ "$want" = "$have" ]; then
     exit 0
 fi
 echo "Installing Home Assistant $want into /data/venv (was: ${have:-none})..."
-/data/venv/bin/pip install --quiet --upgrade \
+/data/venv/bin/pip install --quiet --upgrade --no-cache-dir \
     --extra-index-url https://wheels.home-assistant.io/musllinux-index/ \
     "homeassistant==$want" pre-commit pyyaml
 echo "venv now on Home Assistant $want"

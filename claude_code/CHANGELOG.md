@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Keep only the Claude Code version in use (old ones piled up at ~250 MB each)
+  and clear the uv/pip caches at every start; pip installs without a cache.
+
 ## 0.1.2
 
 - Start Claude with `--model` from the options, so a continued conversation

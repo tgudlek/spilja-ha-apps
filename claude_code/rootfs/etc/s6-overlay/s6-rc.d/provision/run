@@ -32,6 +32,17 @@ else
 fi
 touch /tmp/claude-ready
 
+# Disk hygiene on a small eMMC: only the Claude Code version in use (the
+# installer keeps every old one, ~250 MB each) and no package caches (they
+# are rebuilt on demand).
+current="$(readlink -f "$HOME/.local/bin/claude" 2>/dev/null)"
+if [ -n "$current" ] && [ -f "$current" ]; then
+    for v in "$HOME"/.local/share/claude/versions/*; do
+        [ -f "$v" ] && [ "$v" != "$current" ] && rm -f "$v" && bashio::log.info "Removed old Claude Code $(basename "$v")"
+    done
+fi
+rm -rf "$HOME/.cache/uv" "$HOME/.cache/pip"
+
 # After a clone: what a Home Assistant config clone needs for pre-commit.
 post_clone() {
     local dir="$1"
